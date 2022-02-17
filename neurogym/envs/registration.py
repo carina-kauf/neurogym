@@ -235,4 +235,4 @@ def register(id, **kwargs):
 
 
 for env_id, entry_point in ALL_EXTENDED_ENVS.items():
-    register(id=env_id, entry_point=entry_point)
+    register(id=env_id, entry_point=entry_point, order_enforce=False)
