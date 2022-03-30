@@ -114,6 +114,47 @@ class MultiEnvs(TrialWrapper):
                 (self.unwrapped.ob, env_ob), axis=-1)
             return trial
 
+class MultiEnvsWord(TrialWrapper):
+    """Wrap multiple environments.
+
+    Args:
+        envs: list of env object
+        env_input: bool, if True, add scalar inputs indicating current
+            envinronment. default False.
+    """
+    def __init__(self, envs, env_input=False):
+        super().__init__(envs[0])
+        for env in envs:
+            env.unwrapped.set_top(self)
+        self.envs = envs
+        self.i_env = 0
+
+        self.env_input = env_input
+        if env_input:
+            env_shape = envs[0].observation_space.shape
+            if len(env_shape) > 1:
+                raise ValueError('Env must have 1-D Box shape',
+                                 'Instead got ' + str(env_shape))
+            _have_equal_shape(envs)
+
+    def set_i(self, i):
+        """Set the i-th environment."""
+        self.i_env = i
+        self.env = self.envs[self.i_env]
+
+    def new_trial(self, **kwargs):
+        if not self.env_input:
+            return self.env.new_trial(**kwargs)
+        else:
+            trial = self.env.new_trial(**kwargs)
+            # # Expand observation
+            # env_ob = np.zeros((self.unwrapped.ob.shape[0], len(self.envs)),
+            #                   dtype=self.unwrapped.ob.dtype)
+            # env_ob[:, self.i_env] = 1.
+            # self.unwrapped.ob = np.concatenate(
+            #     (self.unwrapped.ob, env_ob), axis=-1)
+            return trial
+
 
 class ScheduleEnvs(TrialWrapper):
     """Schedule environments.
@@ -140,7 +181,7 @@ class ScheduleEnvs(TrialWrapper):
                                  'Instead got ' + str(env_shape))
             _have_equal_shape(envs)
             self.observation_space = spaces.Box(
-                -np.inf, np.inf, shape=(env_shape[0] + len(self.envs),),
+                -np.inf, np.inf, shape=(env_shape[0] + len(self.envs),), #this is where the rule input is being added!
                 dtype=self.observation_space.dtype
             )
 
@@ -157,11 +198,57 @@ class ScheduleEnvs(TrialWrapper):
         else:
             trial = self.env.new_trial(**kwargs)
             # Expand observation
-            env_ob = np.zeros((self.unwrapped.ob.shape[0], len(self.envs)),
+            env_ob = np.zeros((self.unwrapped.ob.shape[0], len(self.envs)), #all this does is set the rule input
                               dtype=self.unwrapped.ob.dtype)
             env_ob[:, self.i_env] = 1.
             self.unwrapped.ob = np.concatenate(
                 (self.unwrapped.ob, env_ob), axis=-1)
+            return trial
+
+class ScheduleEnvsWords(TrialWrapper):
+    """Schedule environments.
+
+    Args:
+        envs: list of env object
+        schedule: utils.scheduler.BaseSchedule object
+        env_input: bool, if True, add scalar inputs indicating current
+            envinronment. default False.
+    """
+    def __init__(self, envs, schedule, env_input=False):
+        super().__init__(envs[0])
+        for env in envs:
+            env.unwrapped.set_top(self)
+        self.envs = envs
+        self.schedule = schedule
+        self.i_env = 0
+
+        self.env_input = env_input
+        if env_input:
+            env_shape = envs[0].observation_space.shape
+            if len(env_shape) > 1:
+                raise ValueError('Env must have 1-D Box shape',
+                                 'Instead got ' + str(env_shape))
+            _have_equal_shape(envs)
+
+    def seed(self, seed=None):
+        for env in self.envs:
+            env.seed(seed)
+        self.schedule.seed(seed)
+
+    def new_trial(self, **kwargs):
+        self.i_env = self.schedule()
+        self.env = self.envs[self.i_env]
+        if not self.env_input:
+            return self.env.new_trial(**kwargs)
+        else:
+            trial = self.env.new_trial(**kwargs)
+            # # Expand observation
+            # self.unwrapped.ob.shape[0]
+            # env_ob = np.zeros((self.unwrapped.ob.shape[0], len(self.envs)), #all this does is set the rule input
+            #                   dtype=self.unwrapped.ob.dtype)
+            # env_ob[:, self.i_env] = 1.
+            # self.unwrapped.ob = np.concatenate(
+            #     (self.unwrapped.ob, env_ob), axis=-1)
             return trial
 
 

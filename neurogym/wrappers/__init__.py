@@ -6,7 +6,7 @@ from neurogym.wrappers.reaction_time import ReactionTime
 from neurogym.wrappers.side_bias import SideBias
 from neurogym.wrappers.block import RandomGroundTruth
 from neurogym.wrappers.block import ScheduleAttr
-from neurogym.wrappers.block import ScheduleEnvs
+from neurogym.wrappers.block import ScheduleEnvs, ScheduleEnvsWords
 from neurogym.wrappers.block import TrialHistoryV2
 
 ALL_WRAPPERS = {'Monitor-v0': 'neurogym.wrappers.monitor:Monitor',

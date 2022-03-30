@@ -105,6 +105,8 @@ ALL_PSYCHOPY_ENVS = {
 _contrib_name_prefix = 'contrib.'
 _contrib_prefix = 'neurogym.envs.contrib.'
 CONTRIB_ALLOW_LIST = [
+    'DelayMatchSampleWord',
+    'DelayMatchSampleMemProbe'
     # 'AngleReproduction',
     # 'CVLearning',
     # 'ChangingEnvironment',
@@ -235,4 +237,4 @@ def register(id, **kwargs):
 
 
 for env_id, entry_point in ALL_EXTENDED_ENVS.items():
-    register(id=env_id, entry_point=entry_point, order_enforce=False)
+    register(id=env_id, entry_point=entry_point)
