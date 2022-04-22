@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-# CHECK https://colab.research.google.com/drive/1uryUAkHB__DUxWiR0C8uuJ3p13WeGSK2#scrollTo=fswAnFdOpbzs
-# TUTORIAL https://colab.research.google.com/drive/1R2uYpcGAaC9UQuVGvrQodxM7vIzl6F9v#scrollTo=sapphire-alabama
 import numpy as np
 import torch
 
@@ -35,7 +33,8 @@ def get_vocab(dataset): #has to be here too due to circular import otherwise
     return vocab, vocab_size
 
 
-class DelayMatchSampleMemProbe(ngym.TrialEnv):
+
+class DelayMatchSampleWordVS2Control(ngym.TrialEnv):
     r"""Delayed match-to-sample task.
 
     A sample stimulus is shown during the sample period. The stimulus is
@@ -45,10 +44,9 @@ class DelayMatchSampleMemProbe(ngym.TrialEnv):
     """
     metadata = {}
 
-    def __init__(self, dt=100, rewards=None, timing=None):
+    def __init__(self, dt=100, rewards=None, sigma=1, timing=None):
         super().__init__(dt=dt)
         self.choices = [1, 2]
-        self.stim_length = 5 #From how many words to choose probe
 
         # Rewards
         self.rewards = {'abort': -0.1, 'correct': +1., 'fail': 0.}
@@ -57,13 +55,9 @@ class DelayMatchSampleMemProbe(ngym.TrialEnv):
 
         self.abort = False
 
-        self.timing = { #this determines sequence length! (i.e., length of Trial action shape
+        self.timing = { #this determines sequence length! (i.e., length of Trial action shape)
             'fixation': 300,
-            'sample1': 100,
-            'sample2': 100,
-            'sample3': 100,
-            'sample4': 100,
-            'sample5': 100,
+            'sample': 500,
             'delay': 1000,
             'test': 500,
             'decision': 900}
@@ -71,6 +65,7 @@ class DelayMatchSampleMemProbe(ngym.TrialEnv):
             self.timing.update(timing)
 
         self.vocab, self.vocab_size = get_vocab(WikiText2)
+        self.vocab_size = 5 #fixation, delay, decision stimuli + 2 words to sample from!
 
         name = {'stimulus': range(self.vocab_size+1)}
         self.observation_space = spaces.Discrete(self.vocab_size+1, name=name) #https://grid2op.readthedocs.io/en/latest/gym.html
@@ -93,46 +88,50 @@ class DelayMatchSampleMemProbe(ngym.TrialEnv):
         Optionally, you can set:
         The ground truth: the correct answer for the created trial.
         """
+
         try:
-            stim_start, stim_delay, stim_decide = self.vocab["fix"], self.vocab["<unk>"], self.vocab["decide"] #unk is 0-embedding
+            stim_start, stim_delay, stim_decide = self.vocab["fix"], self.vocab["<unk>"], self.vocab["decide"]
         except:
             raise ValueError("Required words not found in the vocabulary!")
         exclude_from_choice = [stim_start, stim_delay, stim_decide]
         word_choice_list = list(set(list(range(self.vocab_size))) - set(exclude_from_choice))
+        word_choice_list = word_choice_list[:2] #word_choice_list ends up being vocab indices [1,2] since 0 is excluded (maps to <unk>)
+        # print(f'Can choose from the following list of words: {word_choice_list}')
+        # for i in word_choice_list:
+        #     print(self.vocab.get_itos()[i])
+        #     print(self.vocab['the'])
+        #     print(self.vocab[','])
 
         # Trial
         trial = {
             'ground_truth': self.rng.choice(self.choices),
-            'sample_words': [self.rng.choice(word_choice_list) for i in range(self.stim_length)]#0 is unk, 1 and 2 are <trial_start> and <decision> and are used as stimulus start/decision period markers
+            'sample_word': self.rng.choice(word_choice_list) #0 is unk, 1 and 2 are <trial_start> and <decision> and are used as stimulus start/decision period markers
         }
         #print(trial)
         trial.update(kwargs)
 
         ground_truth = trial['ground_truth']
-        sample_words = trial['sample_words']
+        sample_word_idx = trial['sample_word']
+
 
         if ground_truth == 1:
-            memory_probe = self.rng.choice(sample_words)
+            test_word_idx = sample_word_idx
         else:
             same_word_picked = True
             while same_word_picked:
-                memory_probe = self.rng.choice(self.vocab_size)
-                if memory_probe not in sample_words:
+                test_word_idx = self.rng.choice(word_choice_list)
+                if test_word_idx != sample_word_idx:
                     same_word_picked = False
-        trial['test_word'] = memory_probe
+        trial['test_word'] = test_word_idx
 
-        stim_samples = sample_words
-        stim_test = memory_probe
+        stim_sample = sample_word_idx
+        stim_test = test_word_idx
 
         # Periods
-        self.add_period(['fixation', 'sample1', 'sample2', 'sample3', 'sample4', 'sample5', 'delay', 'test', 'decision'])
+        self.add_period(['fixation', 'sample', 'delay', 'test', 'decision'])
 
         self.add_ob(stim_start, 'fixation')
-        self.add_ob(stim_samples[0], 'sample1')
-        self.add_ob(stim_samples[1], 'sample2')
-        self.add_ob(stim_samples[2], 'sample3')
-        self.add_ob(stim_samples[3], 'sample4')
-        self.add_ob(stim_samples[4], 'sample5')
+        self.add_ob(stim_sample, 'sample')
         self.add_ob(stim_delay, 'delay')
         self.add_ob(stim_test, 'test')
         self.add_ob(stim_decide, 'decision')
@@ -175,7 +174,7 @@ class DelayMatchSampleMemProbe(ngym.TrialEnv):
 #
 if __name__ == '__main__':
     # Instantiate the task
-    env = DelayMatchSampleMemProbe()
+    env = DelayMatchSampleWordVS2Control()
     trial = env.new_trial()
     print('Trial info', trial)
     print('Trial observation shape', env.ob.shape)

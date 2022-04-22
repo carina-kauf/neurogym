@@ -1,16 +1,37 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-# CHECK https://colab.research.google.com/drive/1uryUAkHB__DUxWiR0C8uuJ3p13WeGSK2#scrollTo=fswAnFdOpbzs
-# TUTORIAL https://colab.research.google.com/drive/1R2uYpcGAaC9UQuVGvrQodxM7vIzl6F9v#scrollTo=sapphire-alabama
 import numpy as np
 import torch
 
 import neurogym as ngym
 from neurogym import spaces
 
-from src.data import get_splits
+from torchtext.data.utils import get_tokenizer
+from torchtext.vocab import build_vocab_from_iterator
+
 from torchtext.datasets import WikiText2
+
+def get_vocab(dataset): #has to be here too due to circular import otherwise
+    """
+    Args:
+        dataset: Name of torchtext dataset
+
+    Returns:
+        vocab_size: int, size of vocabulary
+        train_data: Tensor, shape [full_seq_len, batch_size], i.e., [N // bsz, bsz]
+        val_data: Tensor, shape [full_seq_len, eval_batch_size (here:10)], i.e., [N // 10, 10]
+        test_data: Tensor, shape [full_seq_len, eval_batch_size (here:10)], i.e., [N // 10, 10]
+    """
+
+    train_iter = dataset(split='train')
+    tokenizer = get_tokenizer('basic_english')
+    vocab = build_vocab_from_iterator(map(tokenizer, train_iter), specials=['<unk>'])
+    vocab.set_default_index(vocab['<unk>'])
+    vocab_size = len(vocab)
+
+    return vocab, vocab_size
+
 
 
 class DelayMatchSampleWord(ngym.TrialEnv):
@@ -44,8 +65,7 @@ class DelayMatchSampleWord(ngym.TrialEnv):
         if timing:
             self.timing.update(timing)
 
-        self.vocab = get_splits(WikiText2, batch_size=20, return_only_vocab=True)
-        self.vocab_size = len(self.vocab)
+        self.vocab, self.vocab_size = get_vocab(WikiText2)
 
         name = {'stimulus': range(self.vocab_size+1)}
         self.observation_space = spaces.Discrete(self.vocab_size+1, name=name) #https://grid2op.readthedocs.io/en/latest/gym.html
@@ -68,10 +88,17 @@ class DelayMatchSampleWord(ngym.TrialEnv):
         Optionally, you can set:
         The ground truth: the correct answer for the created trial.
         """
+
+        try:
+            stim_start, stim_delay, stim_decide = self.vocab["fix"], self.vocab["<unk>"], self.vocab["decide"]
+        except:
+            raise ValueError("Required words not found in the vocabulary!")
+        exclude_from_choice = [stim_start, stim_delay, stim_decide]
+        word_choice_list = list(set(list(range(self.vocab_size))) - set(exclude_from_choice))
         # Trial
         trial = {
             'ground_truth': self.rng.choice(self.choices),
-            'sample_word': self.rng.choice(range(3,self.vocab_size)) #0 is unk, 1 and 2 are <trial_start> and <decision> and are used as stimulus start/decision period markers
+            'sample_word': self.rng.choice(word_choice_list) #0 is unk, 1 and 2 are <trial_start> and <decision> and are used as stimulus start/decision period markers
         }
         #print(trial)
         trial.update(kwargs)
@@ -96,11 +123,11 @@ class DelayMatchSampleWord(ngym.TrialEnv):
         # Periods
         self.add_period(['fixation', 'sample', 'delay', 'test', 'decision'])
 
-        stim_start, stim_end = self.vocab["<trial_start>"], self.vocab["<decision>"] #TODO ADD EOS token here instead
         self.add_ob(stim_start, 'fixation')
-        self.add_ob(stim_end, 'decision')
         self.add_ob(stim_sample, 'sample')
+        self.add_ob(stim_delay, 'delay')
         self.add_ob(stim_test, 'test')
+        self.add_ob(stim_decide, 'decision')
 
         self.set_groundtruth(ground_truth, 'decision')
 
