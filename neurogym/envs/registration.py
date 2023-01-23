@@ -1,6 +1,7 @@
 import importlib
 from inspect import getmembers, isfunction, isclass
 from pathlib import Path
+from packaging import version
 
 import gym
 from neurogym.envs.collections import get_collection
@@ -86,7 +87,7 @@ NATIVE_ALLOW_LIST = [
     'ReachingDelayResponse',
     'ReadySetGo',
     'SingleContextDecisionMaking',
-    'SpatialSuppressMotion',
+    # 'SpatialSuppressMotion',  # TODO: raises ModuleNotFound error since requires scipy, which is not in the requirements of neurogym
     # 'ToneDetection'  # TODO: Temporary removing until bug fixed
 ]
 ALL_NATIVE_ENVS = _get_envs(foldername=None, env_prefix=None,
@@ -215,9 +216,21 @@ def _distance(s0, s1):
 
 def make(id, **kwargs):
     try:
-        return gym.make(id, **kwargs)
+        # TODO: disable gym 0.24 env_checker for now (raises warnings, even errors when ob not in observation_space)
+        if version.parse(gym.__version__) >= version.parse('0.24.0'):
+            return gym.make(id, disable_env_checker=True, **kwargs)
+        else:
+            return gym.make(id, **kwargs)
+
     except gym.error.UnregisteredEnv:
-        all_ids = [env.id for env in gym.envs.registry.all()]
+        # backward compatibility with old versions of gym
+        if hasattr(gym.envs.registry, 'all'):
+            print("all")
+            all_ids = [env.id for env in gym.envs.registry.all()]
+        else:
+            print("values")
+            all_ids = [env.id for env in gym.envs.registry.values()]
+
         dists = [_distance(id, env_id) for env_id in all_ids]
         # Python argsort
         sort_inds = sorted(range(len(dists)), key=dists.__getitem__)
@@ -228,7 +241,11 @@ def make(id, **kwargs):
         raise gym.error.UnregisteredEnv(err_msg)
 
 
-_all_gym_envs = [env.id for env in gym.envs.registry.all()]
+# backward compatibility with old versions of gym
+if hasattr(gym.envs.registry, 'all'):
+    _all_gym_envs = [env.id for env in gym.envs.registry.all()]
+else:
+    _all_gym_envs = [env.id for env in gym.envs.registry.values()]
 
 
 def register(id, **kwargs):
